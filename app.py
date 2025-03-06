@@ -73,7 +73,7 @@ def main():
     # Sidebar setup
     with st.sidebar:
         st.image("AnitaMDorr.jpg", width=300, use_container_width=True)
-        st.title("Hello! I'm ANITA - v3")
+        st.title("Hello! I'm ANITA - v3.1")
 
         def on_enafocus_change():
             st.session_state.chat_handler = ChatHandler()
