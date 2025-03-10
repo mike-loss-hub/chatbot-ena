@@ -5,7 +5,7 @@ import toml
 from pathlib import Path
 import os
 
-#aadded this
+#aadded this for the the class
 
 def load_dotStreat_sl():
     try:
