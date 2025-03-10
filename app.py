@@ -73,7 +73,7 @@ def main():
     # Sidebar setup
     with st.sidebar:
         st.image("AnitaMDorr.jpg", width=300, use_container_width=True)
-        st.title("Hello! I'm ANITA - v3.1")
+        st.title("Hello! I'm ANITA - v3.12")
 
         def on_enafocus_change():
             st.session_state.chat_handler = ChatHandler()
@@ -82,7 +82,7 @@ def main():
 
         enafocus = st.radio(
             "ENA Focus",
-            ("Website","Old Website"),
+            ("Website"),
             #("Position Statements", "Website"),#, "HR"),
             index=0,
             help="Select the ENA focus area",
