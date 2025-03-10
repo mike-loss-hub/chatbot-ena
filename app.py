@@ -82,7 +82,7 @@ def main():
 
         enafocus = st.radio(
             "ENA Focus",
-            ("Website"),
+            ("Website","Old Website"),
             #("Position Statements", "Website"),#, "HR"),
             index=0,
             help="Select the ENA focus area",
@@ -109,7 +109,7 @@ def main():
         chat_input_prompt = "Ask me anything about ENA's position statements!"
         st.session_state["kb_id"] = st.secrets["knowledge_base_postions_id"]
         st.session_state["mode"] = "position statements"
-    elif enafocus == "HR":
+    elif enafocus == "Old Website":
         chat_input_prompt = "Ask me anything about ENA's HR Documents!"
         st.session_state["kb_id"] = st.secrets["knowledge_base_hr_id"]
         st.session_state["mode"] = "human resources documents"
