@@ -1,6 +1,6 @@
 aiohttp
 aiosignal
-altair
+altair==4.0
 annotated-types
 anyio
 async-timeout
