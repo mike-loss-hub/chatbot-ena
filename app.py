@@ -1,9 +1,10 @@
 import streamlit as st
 import boto3
-from utils import ChatHandler, answer_query_nova_kb
+from utils import ChatHandler, answer_query_nova_kb, load_csv_to_variable, load_simple_csv
 import toml
 from pathlib import Path
 import os
+import json
 #test xxxx xcxcxc
 #assaasa
 
@@ -32,6 +33,8 @@ def load_dotStreat_sl():
             secrets = toml.load(secrets_path)
             
             for key, value in secrets.items():
+                print(key)
+                print(value)
                 if isinstance(value, dict):
                     for sub_key, sub_value in value.items():
                         full_key = f"{key}_{sub_key}".upper()
@@ -39,6 +42,8 @@ def load_dotStreat_sl():
                 else:
                     os.environ[key.upper()] = str(value)
             
+
+
             return True
             
     except Exception as e:
@@ -46,17 +51,44 @@ def load_dotStreat_sl():
         return False
 
 def initialize_aws_clients():
+    region_name=""
+
+    aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"]
+    aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"]
+    region_name=st.secrets["AWS_DEFAULT_REGION"]
+    epurl=f"""https://bedrock-runtime.{region_name}.amazonaws.com"""
+    
     session = boto3.Session(
-        aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"],
-        region_name=st.secrets["AWS_DEFAULT_REGION"]
+        aws_access_key_id=aws_access_key_id, #st.secrets["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=aws_secret_access_key,#st.secrets["AWS_SECRET_ACCESS_KEY"],
+        region_name=region_name #st.secrets["AWS_DEFAULT_REGION"]
     )
 
-    bedrock = session.client('bedrock-runtime', 'us-east-1', 
-                            endpoint_url='https://bedrock-runtime.us-east-1.amazonaws.com')
+    bedrock = session.client('bedrock-runtime', region_name, 
+                            #endpoint_url='https://bedrock-runtime.{us-east-1}.amazonaws.com')
+                            endpoint_url=epurl)
     bedrock_agent_runtime_client = boto3.client('bedrock-agent-runtime')
     
     return bedrock, bedrock_agent_runtime_client
+
+def promptTest():
+   
+    bedrock_runtime = boto3.client('bedrock-runtime')
+
+    try:
+        # A minimal request just to test permissions
+        response = bedrock_runtime.invoke_model(
+            modelId='anthropic.claude-3-5-haiku-20241022-v1:0',
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 10,
+                "messages": [{"role": "user", "content": "Test"}]
+            })
+        )
+        print("Success! You have the required permissions.")
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        # If you see "AccessDeniedException", you don't have the required permissions
 
 def main():
     if 'initialized' not in st.session_state:
@@ -69,11 +101,11 @@ def main():
     # Initialize AWS clients
     load_dotStreat_sl()
     bedrock, bedrock_agent_runtime_client = initialize_aws_clients()
-
+   
     # Sidebar setup
     with st.sidebar:
-        st.image("AnitaMDorr.jpg", width=300, use_container_width=True)
-        st.title("Hello! I'm ANITA - v3.1")
+        st.image("WashSymbol.jpg", width=300, use_container_width=True)
+        st.title("Hello! I'm Wa-Bot - v0.9")
 
         def on_enafocus_change():
             st.session_state.chat_handler = ChatHandler()
@@ -82,7 +114,7 @@ def main():
 
         enafocus = st.radio(
             "ENA Focus",
-            ("Website"),
+            ("Website-Agencies", "Website"),
             #("Position Statements", "Website"),#, "HR"),
             index=0,
             help="Select the ENA focus area",
@@ -92,9 +124,10 @@ def main():
 
         llm_model = st.radio(
             "LLM Model",
-            ("Nova","Claude"),
+            ("Nova Pro","Nova Micro","claude-3-5-haiku","claude-3-5-sonnet"),
             index=0,
-            help="Select the LLM model"
+            help="Select the LLM model",
+            on_change=on_enafocus_change
         )
 
         clear_button = st.button("🧹", help="Clear conversation")
@@ -106,22 +139,28 @@ def main():
 
     # Set configurations based on selections
     if enafocus == "Position Statements":
-        chat_input_prompt = "Ask me anything about ENA's position statements!"
+        chat_input_prompt = "Ask me anything about Washington Resident Services!"
         st.session_state["kb_id"] = st.secrets["knowledge_base_postions_id"]
         st.session_state["mode"] = "position statements"
-    elif enafocus == "HR":
-        chat_input_prompt = "Ask me anything about ENA's HR Documents!"
-        st.session_state["kb_id"] = st.secrets["knowledge_base_hr_id"]
-        st.session_state["mode"] = "human resources documents"
     elif enafocus == "Website":
-        chat_input_prompt = "Ask me anything about ENA's Website!"
+        chat_input_prompt = "Ask me anything about Washington Resident Services!"
+        st.session_state["kb_id"] = st.secrets["knowledge_base_hr_id"]
+        st.session_state["mode"] = "Website"
+        #st.session_state["Agency_List"]="None"
+    elif enafocus == "Website-Agencies":
+        chat_input_prompt = "Washington Resident Services - Only Agency sites"
         st.session_state["kb_id"] = st.secrets["knowledge_base_website_id"]
-        st.session_state["mode"] = "ENA's Website"
+        st.session_state["mode"] = "Website-Agencies"
+        #st.session_state["Agency_List"]=load_csv_to_variable("AgencyList.csv")
 
-    if llm_model == "Claude":
-        st.session_state["model_id"] = st.secrets["model_id_2"]
-    elif llm_model == "Nova":
+    if llm_model == "claude-3-5-haiku":
+        st.session_state["model_id"] = st.secrets["model_id_3"]
+    elif llm_model == "Nova Pro":
         st.session_state["model_id"] = st.secrets["model_id_1"]
+    elif llm_model == "Nova Micro":
+        st.session_state["model_id"] = st.secrets["model_id_2"]
+    elif llm_model == "claude-3-5-sonnet":
+        st.session_state["model_id"] = st.secrets["model_id_4"]
 
     # Custom CSS
     st.markdown("""
@@ -163,6 +202,7 @@ def main():
                     st.session_state["mode"]
                 )
                 st.write(response)
+
 
 if __name__ == "__main__":
     main()

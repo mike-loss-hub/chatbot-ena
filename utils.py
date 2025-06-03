@@ -4,6 +4,40 @@ import os
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langdetect import detect
+import time
+import requests
+from requests_aws4auth import AWS4Auth
+import csv
+import pandas as pd
+
+
+def load_simple_csv(file_path):
+    csv_reader=""
+    with open('data.csv', 'r') as csvfile:
+        # Create a reader object
+        csv_reader = csv.reader(csvfile)
+    return csv_reader
+
+
+def load_csv_to_variable(file_path):
+    """Loads a CSV file into a pandas DataFrame.
+
+    Args:
+        file_path (str): The path to the CSV file.
+
+    Returns:
+        pandas.DataFrame: A DataFrame containing the data from the CSV file.
+    """
+    try:
+        df = pd.read_csv(file_path)
+        return df
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+        return None
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
 
 class ChatHandler:
     def __init__(self):
@@ -75,7 +109,7 @@ def get_context(fbedrock_agent_runtime_client, foundation_model, kb_id_hierarchi
         return f"An error occurred: {str(e)}"
     return sorted_results
 
-def get_response(fbedrock_client, foundation_model, query, region='us-east-1'):
+def get_response(fbedrock_client, foundation_model, query, region='us-west-2'):
     system = [{
         "text": "You are a helpful AI assistant."
     }]
@@ -110,7 +144,7 @@ def get_response(fbedrock_client, foundation_model, query, region='us-east-1'):
 
     return output_text
 
-def get_response_claude(fbedrock_client, foundation_model, query, region='us-east-1'):
+def get_response_claude(fbedrock_client, foundation_model, query, region='us-west-2'):
     system = "You are a helpful AI assistant."
 
     messages = [{
@@ -141,53 +175,56 @@ def get_response_claude(fbedrock_client, foundation_model, query, region='us-eas
     return output_text
 
 def answer_query_nova_kb(user_input, chat_handler, bedrock, bedrock_agent_runtime_client, model_id, kb_id, mode):
+    
+    start_time = time.time()
     language_map = {
         "en": "English", "pl": "Polish", "es": "Spanish",
         # ... (rest of language map)
     }
     
+    context="NONE"
+    if mode == "Website-Agencies":
+        context = load_csv_to_variable("AgencyList.csv")[['Website','Parent Domain','Domain']]
+        context.reset_index(drop=True)
+
+
     userQuery = user_input
     chat_history = chat_handler.get_conversation_string()  
     
     detected_language_code = detect(userQuery)    
     detected_language_name = language_map.get(detected_language_code, "Unknown")
-    context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery)
+    #context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery)
+    #context=""
 
     prompt_data = f"""
-        Assistant: You are an AI assistant designed to provide factual and accurate answers to user questions based on the Context provided.
-        Language Consistency: The user's question is in {detected_language_name}. Respond in {detected_language_name}.
-        
+        Assistant: You are a helpful chatbot designed to assist residents of the State of Washington to get answers to questions 
+        about things like proceedures, benefits and regulations. The Agency websites in the Context below as a primary source to answer the Question below.
+        At the bottom list the names of the agencies referenced, along with their parent domain and domain as specified in the Context. 
+
         Conversation History (for reference to clarify intent, NOT as a source for answers):
         {chat_history}
 
-        Context (primary and authoritative source for answers):
+        Context (url sources for answers):
         {context}
 
         Question:
         {userQuery}
-
-        Instructions:
-        1. Always use the Context as the primary and authoritative source for your answers.
-        2. Use the Conversation History ONLY to:
-        - Clarify the user's intent
-        - Maintain continuity in the conversation.
-        3. Do NOT generate answers based on the Conversation History alone.
-        4. Be concise and professional in your responses.
-        5. Include specific details from the Context when applicable.
-        6. If the user references a previous answer, verify its accuracy against the Context.
-        7. Please mention the sources by referring to specific ENA documents.
-        8. Sources URLs may be derived from information outside of the context.
-        
+              
         Answer:
     """
 
-    if model_id == 'amazon.nova-pro-v1:0':
+
+    #if model_id == 'us.amazon.nova-pro-v1:0':
+    if model_id.find("nova")!=-1:
         output_text = get_response(bedrock, model_id, prompt_data)
     else:
         output_text = get_response_claude(bedrock, model_id, prompt_data)
 
     chat_handler.add_message("human", userQuery)
     chat_handler.add_message("ai", output_text)
-   
-    output_text = f"{output_text}\n\nModel used: {model_id}\n\nbot type: {mode}\n\n"
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    runTime = f"Elapsed time: {elapsed_time:.4f} seconds"
+    output_text = f"{output_text}\n\nModel used: {model_id}\n\nbot type: {mode}\n\nTime to run: {runTime}\n\n"
     return output_text
