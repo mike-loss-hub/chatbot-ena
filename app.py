@@ -97,6 +97,17 @@ def main():
         st.rerun()
         st.cache_data.clear()
         st.cache_resource.clear()
+        st.markdown(
+        """
+        <style>
+        .stApp {
+            background-color: black;
+            color: white;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+         )
 
     # Initialize AWS clients
     load_dotStreat_sl()
@@ -138,20 +149,14 @@ def main():
             st.cache_resource.clear()
 
     # Set configurations based on selections
-    if enafocus == "Position Statements":
-        chat_input_prompt = "Ask me anything about Washington Resident Services!"
-        st.session_state["kb_id"] = st.secrets["knowledge_base_postions_id"]
-        st.session_state["mode"] = "position statements"
-    elif enafocus == "Website":
+    if enafocus == "Website":
         chat_input_prompt = "Ask me anything about Washington Resident Services!"
         st.session_state["kb_id"] = st.secrets["knowledge_base_hr_id"]
-        st.session_state["mode"] = "Website"
-        #st.session_state["Agency_List"]="None"
+        st.session_state["mode"] = "Website" 
     elif enafocus == "Website-Agencies":
         chat_input_prompt = "Washington Resident Services - Only Agency sites"
         st.session_state["kb_id"] = st.secrets["knowledge_base_website_id"]
         st.session_state["mode"] = "Website-Agencies"
-        #st.session_state["Agency_List"]=load_csv_to_variable("AgencyList.csv")
 
     if llm_model == "claude-3-5-haiku":
         st.session_state["model_id"] = st.secrets["model_id_3"]
