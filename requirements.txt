@@ -67,7 +67,7 @@ six
 smmap
 sniffio
 SQLAlchemy
-streamlit
+streamlit==1.45.1
 tenacity
 toml
 toolz
