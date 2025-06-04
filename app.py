@@ -68,8 +68,15 @@ def initialize_aws_clients():
                             #endpoint_url='https://bedrock-runtime.{us-east-1}.amazonaws.com')
                             endpoint_url=epurl)
     bedrock_agent_runtime_client = boto3.client('bedrock-agent-runtime')
+
     
-    return bedrock, bedrock_agent_runtime_client
+    s3_client = boto3.client('s3',
+        region_name=region_name,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key)
+
+    
+    return bedrock, bedrock_agent_runtime_client, s3_client
 
 def promptTest():
    
@@ -97,21 +104,13 @@ def main():
         st.rerun()
         st.cache_data.clear()
         st.cache_resource.clear()
-        st.markdown(
-        """
-        <style>
-        .stApp {
-            background-color: black;
-            color: white;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-         )
+
 
     # Initialize AWS clients
+
+
     load_dotStreat_sl()
-    bedrock, bedrock_agent_runtime_client = initialize_aws_clients()
+    bedrock, bedrock_agent_runtime_client, s3_client = initialize_aws_clients()
    
     # Sidebar setup
     with st.sidebar:
@@ -167,9 +166,10 @@ def main():
     elif llm_model == "claude-3-5-sonnet":
         st.session_state["model_id"] = st.secrets["model_id_4"]
 
-    # Custom CSS
+    #Custom CSS
     st.markdown("""
         <style>
+ 
         .stButton>button {
             background-color: transparent;
             border: none;
@@ -202,6 +202,7 @@ def main():
                     st.session_state.chat_handler,
                     bedrock,
                     bedrock_agent_runtime_client,
+                    s3_client,
                     st.session_state["model_id"],
                     st.session_state["kb_id"],
                     st.session_state["mode"]
