@@ -78,6 +78,14 @@ def initialize_aws_clients():
     
     return bedrock, bedrock_agent_runtime_client, s3_client
 
+def do_batch():
+    if st.session_state.get("batch"):
+        st.write("Batch button was clicked.")
+        if st.button("OK"):
+            st.write("OK button clicked. Closing dialog.")
+        elif st.button("Cancel"):
+            st.write("Cancel button clicked. Closing dialog.")
+
 def promptTest():
    
     bedrock_runtime = boto3.client('bedrock-runtime')
@@ -116,7 +124,7 @@ def main():
     with st.sidebar:
         st.image("WashSymbol.jpg", width=300, use_container_width=True)
         st.title("Hello! I'm Wa-Bot - v0.9")
-        report_mode = st.checkbox("Report Mode", key="report_mode")
+        report_mode = st.checkbox("Report Mode", key="report_mode", value = True)
 
         def on_enafocus_change():
             st.session_state.chat_handler = ChatHandler()
@@ -146,7 +154,11 @@ def main():
             st.session_state.chat_handler = ChatHandler()
             st.rerun()
             st.cache_data.clear()
-            st.cache_resource.clear()
+            st.cache_resource.clear()  
+        
+        #batch_button = st.button("Batch", key="batch")
+        #if batch_button:
+         #   do_batch()
 
     # Set configurations based on selections
     if enafocus == "Website":
@@ -169,8 +181,11 @@ def main():
 
     #Custom CSS
     st.markdown("""
+                
+        <h1 style='text-align: left; color: red; font-size: 24px; font-weight: bold;'>
+            This Site Is For Demonstration Purposes Only
+        </h1>
         <style>
- 
         .stButton>button {
             background-color: transparent;
             border: none;

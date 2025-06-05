@@ -242,9 +242,9 @@ def answer_query_nova_kb(user_input, chat_handler, bedrock, bedrock_agent_runtim
     userQuery = user_input
     chat_history = chat_handler.get_conversation_string()  
     
-    detected_language_code = detect(userQuery)    
-    detected_language_name = language_map.get(detected_language_code, "Unknown")
-    #context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery)
+    #detected_language_code = detect(userQuery)    
+    #detected_language_name = language_map.get(detected_language_code, "Unknown")
+    detected_language_name = 'English'
  
     prompt_data = f"""You are a knowledgeable and trustworthy virtual assistant for Washington State residents. 
     Your role is to provide accurate, up-to-date information and direct links to official state agency services, forms, and resources.
