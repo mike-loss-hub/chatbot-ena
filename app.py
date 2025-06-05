@@ -116,6 +116,7 @@ def main():
     with st.sidebar:
         st.image("WashSymbol.jpg", width=300, use_container_width=True)
         st.title("Hello! I'm Wa-Bot - v0.9")
+        report_mode = st.checkbox("Report Mode", key="report_mode")
 
         def on_enafocus_change():
             st.session_state.chat_handler = ChatHandler()
@@ -123,7 +124,7 @@ def main():
             st.cache_resource.clear()
 
         enafocus = st.radio(
-            "ENA Focus",
+            "Wa-Bot mode",
             ("Website-Agencies", "Website"),
             #("Position Statements", "Website"),#, "HR"),
             index=0,
@@ -205,7 +206,8 @@ def main():
                     s3_client,
                     st.session_state["model_id"],
                     st.session_state["kb_id"],
-                    st.session_state["mode"]
+                    st.session_state["mode"],
+                    report_mode 
                 )
                 st.write(response)
 

@@ -225,8 +225,7 @@ def get_response_claude(fbedrock_client, foundation_model, query, region='us-wes
 
     return output_text
 
-def answer_query_nova_kb(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, model_id, kb_id, 
-                         mode, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/"):
+def answer_query_nova_kb(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, model_id, kb_id, mode, report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/"):
 
     start_time = time.time()
     out_flag=True
@@ -299,8 +298,7 @@ def answer_query_nova_kb(user_input, chat_handler, bedrock, bedrock_agent_runtim
     runTime = f"Elapsed time: {elapsed_time:.4f} seconds"
     output_text = f"{output_text}\n\nModel used: {model_id}\n\nbot type: {mode}\n\nTime to run: {runTime}\n\n"
     
-    if out_flag:
-        
+    if report_mode:
         filename = generate_json_filename(tag)
         object_key=f"{object_key_path}{filename}"
         #build_json_file(filename, name="John Doe", age=30, city="New York", skills=["Python", "Data Analysis"])
