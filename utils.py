@@ -20,6 +20,8 @@ import re
 from typing import List, Dict, Any
 import io
 
+from concurrent.futures import ThreadPoolExecutor
+
 def generate_json_filename(tag):
     # Get current date and time
     current_datetime = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -267,7 +269,7 @@ def do_batch_assess():
 def do_batch_prompts(bedrock,bedrock_agent_runtime_client, s3_client, chat_handler, kb_id):
     
     report_mode=True
-    promptlist="simple_prompts_big.csv"
+    promptlist="simple_prompts_small.csv"
     #s3_uri = f"""s3://watech-rppilot-bronze/evaluation_data/prompt_lists/{promptlist}"""
     s3_uri=f"""s3://watech-rppilot-bronze/evaluation_data/prompt_lists/{promptlist}"""
     cohort_tag=f"""{promptlist}_fullloop05"""
@@ -294,8 +296,8 @@ def do_batch_prompts(bedrock,bedrock_agent_runtime_client, s3_client, chat_handl
     else:
         print("Please enter a valid S3 URI starting with s3://")
 
-    #model_ids = ["us.amazon.nova-pro-v1:0", "us.amazon.nova-micro-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"]
-    model_ids = ["Agent"]
+    model_ids = ["us.amazon.nova-pro-v1:0", "us.amazon.nova-micro-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"]
+    #model_ids = ["Agent"]
     #mode_names = ["Website", "Website-Agencies", "Knowledgebase"]
     mode_names = ["Knowledgebase"]
 
@@ -323,6 +325,68 @@ def do_batch_prompts(bedrock,bedrock_agent_runtime_client, s3_client, chat_handl
                     cohort=cohort_tag,
                     batch_mode=True,
                     object_key_path=object_key_path)
+
+
+
+
+
+def do_batch_prompts_threads(bedrock, bedrock_agent_runtime_client, s3_client, chat_handler, kb_id, max_threads=30):
+    report_mode = True
+    promptlist = "simple_prompts_big.csv"
+    s3_uri = f"s3://watech-rppilot-bronze/evaluation_data/prompt_lists/{promptlist}"
+    cohort_tag = f"{promptlist}_all_modes_threads01"
+
+    if s3_uri.startswith("s3://"):
+        try:
+            parsed = urlparse(s3_uri)
+            bucket = parsed.netloc
+            key = parsed.path.lstrip("/")
+
+            s3 = boto3.client("s3")
+            response = s3.get_object(Bucket=bucket, Key=key)
+            raw_bytes = response["Body"].read()
+
+            try:
+                content = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                content = raw_bytes.decode("ISO-8859-1")
+
+            data_list = [item.strip() for item in content.splitlines() if item.strip()]
+
+        except Exception as e:
+            print(f"Error reading file: {e}")
+            return
+    else:
+        print("Please enter a valid S3 URI starting with s3://")
+        return
+
+    model_ids = ["us.amazon.nova-pro-v1:0", "us.amazon.nova-micro-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"]
+    #model_ids = ["Agent"]
+    mode_names = ["Website", "Website-Agencies", "Knowledgebase"]
+    #mode_names = ["Knowledgebase"]
+
+    def process_item(item, model_id, mode):
+        return answer_query(
+            item.strip(),
+            chat_handler,
+            bedrock,
+            bedrock_agent_runtime_client,
+            s3_client,
+            model_id,
+            kb_id,
+            mode,
+            report_mode,
+            cohort=cohort_tag,
+            batch_mode=True,
+            object_key_path="evaluation_data/batch/"
+        )
+
+    for model_id in model_ids:
+        for mode in mode_names:
+            print(f"Processing {model_id} in {mode} using {promptlist} with up to {max_threads} threads")
+            with ThreadPoolExecutor(max_workers=max_threads) as executor:
+                executor.map(lambda item: process_item(item, model_id, mode), data_list)
+
 
    
 def send_prompt_to_agent(client, agent_id,agent_alias_id, prompt):
@@ -388,6 +452,25 @@ def get_response_agent__(fbedrock_client, agent, query, region='us-west-2'):
     #response_body = json.loads(response['completion']['text'])
     return response
 
+
+def write_prompt_to_audit_file(prompt_data, filename="audit.txt"):
+    with open(filename, "w", encoding="utf-8") as file:
+        file.write(prompt_data)
+
+def get_response_openai(openai_client, model_id, prompt_data):
+    response = openai_client.chat.completions.create(
+        model=model_id, #"gpt-4",
+        messages=[
+            {"role": "user", "content": prompt_data}
+        ],
+        temperature=0.0,
+        top_p=1.0,
+        max_tokens=500,
+        frequency_penalty=0.0,
+        presence_penalty=0.0
+    )
+    output_text = response.choices[0].message.content
+    return output_text
 
 def get_response_agent_(fbedrock_client, foundation_model, query, region='us-west-2'):
     
@@ -460,7 +543,7 @@ def get_response_claude(fbedrock_client, foundation_model, query, region='us-wes
 
     return output_text
 
-def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, model_id, kb_id, mode,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/", cohort = "user", batch_mode=False):
+def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, openai_client,model_id, kb_id, mode,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/", cohort = "user", batch_mode=False):
 
     start_time = time.time()
     cohort_name=str(cohort).strip().lower() 
@@ -527,6 +610,8 @@ def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client
         output_text = get_response(bedrock, model_id, prompt_data)
     elif model_id.find("claude")!=-1:
         output_text = get_response_claude(bedrock, model_id, prompt_data)
+    elif model_id.find("gpt")!=-1:
+        output_text = get_response_openai(openai_client, model_id, prompt_data)
     else:
         #output_text = get_response_agent(bedrock_agent_runtime_client, model_id, prompt_data)
         #send_prompt_to_agent(prompt, agent_id, agent_alias_id, bedrock_agent, region_name='us-west-2')
@@ -552,6 +637,82 @@ def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client
         s3_client.put_object(Bucket=bucket_name, Key=object_key, Body=content)
         
     return output_text
+
+def answer_query_txt(user_input, chat_handler, bedrock, bedrock_agent_runtime_client, s3_client, model_id, kb_id, mode,
+                 report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",
+                 object_key_path="evaluation_data/users/", cohort="user", batch_mode=False):
+
+    import time
+
+    start_time = time.time()
+    cohort_name = str(cohort).strip().lower()
+    language_map = {
+        "en": "English", "pl": "Polish", "es": "Spanish",
+        # ... (rest of language map)
+    }
+
+    userQuery = user_input
+
+    context = "NONE"
+    if mode == "Website-Agencies":
+        context = load_csv_to_variable("AgencyList.csv")[['Website', 'Parent Domain', 'Domain']]
+        context.reset_index(drop=True)
+    elif mode == "Knowledgebase":
+        context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery)
+        context = f"""{context} Only return URLS present in this context"""
+
+    chat_history = "NONE" if batch_mode else chat_handler.get_conversation_string()
+
+    detected_language_code = detect(userQuery)
+    detected_language_name = language_map.get(detected_language_code, "Unknown")
+
+    # Load prompt template from external file
+    with open("prompt_data.txt", "r", encoding="utf-8") as file:
+        prompt_template = file.read()
+
+    # Format the prompt with dynamic values
+    prompt_data = prompt_template.format(
+        detected_language_name=detected_language_name,
+        chat_history=chat_history,
+        context=context,
+        userQuery=userQuery
+    )
+
+    write_prompt_to_audit_file(prompt_data)
+
+    if "nova" in model_id:
+        output_text = get_response(bedrock, model_id, prompt_data)
+    elif "claude" in model_id:
+        output_text = get_response_claude(bedrock, model_id, prompt_data)
+    else:
+        agent_id = "WYNNZUBAH3"
+        agent_alias_id = "JIFVQV4MZK"
+        output_text = send_prompt_to_agent(bedrock_agent_runtime_client, agent_id, agent_alias_id, userQuery)
+
+    if not batch_mode:
+        chat_handler.add_message("human", userQuery)
+        chat_handler.add_message("ai", output_text)
+
+    elapsed_time = time.time() - start_time
+    runTime = f"Elapsed time: {elapsed_time:.4f} seconds"
+    output_text = f"{output_text}\n\nModel used: {model_id}\n\nbot type: {mode}\n\nTime to run: {runTime}\n\n"
+
+    if report_mode:
+        filename = generate_json_filename(tag)
+        object_key = f"{object_key_path}{cohort_name}_{filename}"
+        content = build_json_string(
+            question=userQuery,
+            response=output_text,
+            timetorun=runTime,
+            model=model_id,
+            bot_type=mode,
+            cohort_tag=cohort_name
+        )
+        s3_client.put_object(Bucket=bucket_name, Key=object_key, Body=content)
+
+    return output_text
+
+
 
 # def answer_query_nova_batch(user_input, resonse, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, model_id, kb_id, mode,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/knowledgebase/Agent/", cohort = "user"):
 
@@ -638,7 +799,7 @@ def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client
         
 #     return output_text
 
-def assess_answer_query(user_query, response, response_model, bedrock, bedrock_agent_runtime_client,s3_client, model_id, batch_mode=False): #,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/", cohort = "user", batch_mode=False):
+def assess_answer_query(user_query, response, response_model, bedrock, bedrock_agent_runtime_client,s3_client,openai_client, model_id, batch_mode=False): #,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/", cohort = "user", batch_mode=False):
 
     start_time = time.time()
     if batch_mode:
@@ -703,6 +864,8 @@ def assess_answer_query(user_query, response, response_model, bedrock, bedrock_a
         output_text = get_response(bedrock, model_id, prompt_data)
     elif model_id.find("claude")!=-1:
         output_text = get_response_claude(bedrock, model_id, prompt_data)
+    elif model_id.find("gpt")!=-1:
+        output_text = get_response_openai(openai_client, model_id, prompt_data)
     else:
         #output_text = get_response_agent(bedrock_agent_runtime_client, model_id, prompt_data)
         #send_prompt_to_agent(prompt, agent_id, agent_alias_id, bedrock_agent, region_name='us-west-2')
@@ -799,15 +962,16 @@ def create_analysis_csv(s3_client):
         "response.assessment",
         "assessed_response",
         "response_model",
+        "response_mode",
         "assess_model",
         "runttime",
         "bot_type",
         "cohort_tag"
     ]
-    s3_output_uri = "s3://watech-rppilot-silver/evaluation_data/reports/output2.csv"
+    s3_output_uri = "s3://watech-rppilot-silver/evaluation_data/reports/simple_prompts_big.csv_all_modes_threads01.csv"
 
     bucket_name = "watech-rppilot-silver"
-    prefix = "evaluation_data/assessments/small/"
+    prefix = "evaluation_data/assessments/big/all_modes/"
 
     build_csv_from_json_s3_folder(s3_client, bucket_name, prefix, s3_input_uri, field_paths, s3_output_uri)
 
@@ -864,5 +1028,67 @@ def LLM_Judge(bedrock, bedrock_agent_runtime_client,s3_client):
                 s3_client.put_object(Bucket=bucket_name_out, Key=object_key, Body=content)
         except json.JSONDecodeError:
             print(f"Error decoding JSON in file: {file_key}")
+
+
+def LLM_Judge_threads(bedrock, bedrock_agent_runtime_client, s3_client, max_threads=30):
+    # AWS S3 configuration
+    bucket_name_out = "watech-rppilot-silver"
+    prefix = "evaluation_data/batch/"  # Optional: folder path inside the bucket
+    keys_to_extract = ['question', 'response']  # Replace with the actual keys you want to extract
+    user_query = ""
+    response = ""
+    model_id = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    object_key_path = ""
+    mode = "assess"
+    tag = "wabotpoc"
+    bucket_name = "watech-rppilot-bronze"
+    object_key_path = "evaluation_data/users/"
+    object_key_path_out = "evaluation_data/assessments/big/all_modes/"
+    cohort_tag_target = "simple_prompts_big.csv_all_modes_threads01"
+
+    # List all JSON files in the bucket
+    response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+    json_files = [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith('.json')]
+
+    def process_file(file_key):
+        obj = s3_client.get_object(Bucket=bucket_name, Key=file_key)
+        content = obj['Body'].read().decode('utf-8')
+        try:
+            data = json.loads(content)
+            user_query = data.get('question', None)
+            response = data.get('response', None)
+            response_model = data.get('model', None)
+            response_mode = data.get('bot_type',None)
+            cohort_tag = data.get('cohort_tag', None)
+            run_time = data.get('timetorun', None)
+            cohort_tag_assess = f"{cohort_tag_target}_assess"
+
+            if cohort_tag_target == cohort_tag:
+                print(f"Assessing {file_key}")
+                output = assess_answer_query(
+                    user_query, response, response_model,
+                    bedrock, bedrock_agent_runtime_client, s3_client,
+                    model_id, batch_mode=True
+                )
+                filename = generate_json_filename(tag)
+                object_key = f"{object_key_path_out}{cohort_tag}_{filename}"
+                content = build_json_string(
+                    response=output,
+                    assessed_response=response,
+                    response_model=response_model,
+                    response_mode=response_mode,
+                    assess_model=model_id,
+                    runttime=run_time,
+                    bot_type=mode,
+                    cohort_tag=cohort_tag_assess
+                )
+                s3_client.put_object(Bucket=bucket_name_out, Key=object_key, Body=content)
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON in file: {file_key}")
+
+    # Use ThreadPoolExecutor to process files concurrently
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        executor.map(process_file, json_files)
+
     
     

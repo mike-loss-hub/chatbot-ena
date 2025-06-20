@@ -38,6 +38,7 @@ mdurl
 multidict
 mypy-extensions
 numpy
+openai
 opensearch-py
 packaging
 pandas

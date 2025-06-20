@@ -1,12 +1,12 @@
 import streamlit as st
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
-from utils import ChatHandler, answer_query, assess_answer_query,create_analysis_csv, do_batch_assess, do_batch_prompts, load_csv_to_variable, load_simple_csv, LLM_Judge
+from utils import ChatHandler, answer_query, assess_answer_query,create_analysis_csv, answer_query_txt ,do_batch_assess,LLM_Judge_threads ,do_batch_prompts, do_batch_prompts_threads, load_csv_to_variable, load_simple_csv, LLM_Judge
 import toml
 from pathlib import Path
 import os
+import openai
 import json
-from urllib.parse import urlparse
 import time
 
 def load_dotStreat_sl():
@@ -72,6 +72,12 @@ def initialize_aws_clients():
 
     return bedrock, bedrock_agent_runtime_client, s3_client
 
+def initialize_openai_clients():
+    openai_secret_access_key=st.secrets["OPENAI_API_KEY"]
+    openai_client = openai.OpenAI(api_key=openai_secret_access_key)
+    return openai_client
+
+
 def main():
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
@@ -82,11 +88,11 @@ def main():
 
     load_dotStreat_sl()
     bedrock, bedrock_agent_runtime_client, s3_client = initialize_aws_clients()
-
+    openai_client = initialize_openai_clients()
     #create_analysis_csv(s3_client)
-    #LLM_Judge(bedrock, bedrock_agent_runtime_client,s3_client)
+    #LLM_Judge_threads(bedrock, bedrock_agent_runtime_client,s3_client)
     #print(output)
-    #do_batch_prompts(bedrock,bedrock_agent_runtime_client, s3_client, st.session_state.chat_handler, st.secrets["knowledge_base_hr_id"])
+    #do_batch_prompts_threads(bedrock,bedrock_agent_runtime_client, s3_client, st.session_state.chat_handler, st.secrets["knowledge_base_hr_id"])
     
     with st.sidebar:
         st.image("WashSymbol.jpg", width=300, use_container_width=True)
@@ -101,14 +107,15 @@ def main():
 
         enafocus = st.radio(
             "Wa-Bot mode",
-            ("Website", "Website-Agencies", "Knowledgebase"),
+            ("Knowledgebase"),
+            #("Website", "Website-Agencies", "Knowledgebase"),
             index=0,
             help="Select the ENA focus area"
         )
 
         llm_model = st.radio(
             "LLM Model",
-            ("Nova Pro","Nova Micro","claude-3-5-haiku","claude-3-5-sonnet", "Agent"),
+            ("Nova Pro","Nova Micro","claude-3-5-haiku","claude-3-5-sonnet", "gpt-4-turbo","gpt-4o"),
             index=0,
             help="Select the LLM model"
         )
@@ -193,6 +200,10 @@ def main():
         st.session_state["model_id"] = st.secrets["model_id_2"]
     elif llm_model == "claude-3-5-sonnet":
         st.session_state["model_id"] = st.secrets["model_id_4"]
+    elif llm_model == "gpt-4-turbo":
+        st.session_state["model_id"] = st.secrets["model_id_5"]
+    elif llm_model == "gpt-4o":
+        st.session_state["model_id"] = st.secrets["model_id_6"]    
     elif llm_model == "Agent":
         st.session_state["model_id"] = st.secrets["agent_id_1"]
 
@@ -233,7 +244,7 @@ def main():
                 ai_response = st.session_state["response_hold"]
                 response_model = st.session_state["model_id_hold"]
                 model_id = st.session_state["model_id"]
-                output = assess_answer_query(user_query, ai_response, response_model, bedrock, bedrock_agent_runtime_client,s3_client, model_id)
+                output = assess_answer_query(user_query, ai_response, response_model, bedrock, bedrock_agent_runtime_client,s3_client,openai_client, model_id)
                 st.write(output)
             else:
                 st.write("nothing to evaluate")
@@ -249,6 +260,7 @@ def main():
                         bedrock,
                         bedrock_agent_runtime_client,
                         s3_client,
+                        openai_client,
                         st.session_state["model_id"],
                         st.session_state["kb_id"],
                         st.session_state["mode"],
