@@ -330,11 +330,11 @@ def do_batch_prompts(bedrock,bedrock_agent_runtime_client, s3_client, chat_handl
 
 
 
-def do_batch_prompts_threads(bedrock, bedrock_agent_runtime_client, s3_client, chat_handler, kb_id, max_threads=30):
+def do_batch_prompts_threads(bedrock, bedrock_agent_runtime_client, s3_client, openai_client,chat_handler, kb_id, max_threads=30):
     report_mode = True
-    promptlist = "simple_prompts_big.csv"
+    promptlist = "legalhelpprompts.csv"
     s3_uri = f"s3://watech-rppilot-bronze/evaluation_data/prompt_lists/{promptlist}"
-    cohort_tag = f"{promptlist}_all_modes_threads01"
+    cohort_tag = f"{promptlist}_bed_chatgpt_threads0"
 
     if s3_uri.startswith("s3://"):
         try:
@@ -360,10 +360,10 @@ def do_batch_prompts_threads(bedrock, bedrock_agent_runtime_client, s3_client, c
         print("Please enter a valid S3 URI starting with s3://")
         return
 
-    model_ids = ["us.amazon.nova-pro-v1:0", "us.amazon.nova-micro-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"]
+    model_ids = ["us.amazon.nova-pro-v1:0", "us.amazon.nova-micro-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0","gpt-4-turbo","gpt-4o"]
     #model_ids = ["Agent"]
-    mode_names = ["Website", "Website-Agencies", "Knowledgebase"]
-    #mode_names = ["Knowledgebase"]
+    #mode_names = ["Website", "Website-Agencies", "Knowledgebase"]
+    mode_names = ["KB-Legal Assistant"]
 
     def process_item(item, model_id, mode):
         return answer_query(
@@ -372,15 +372,16 @@ def do_batch_prompts_threads(bedrock, bedrock_agent_runtime_client, s3_client, c
             bedrock,
             bedrock_agent_runtime_client,
             s3_client,
+            openai_client,
             model_id,
             kb_id,
             mode,
             report_mode,
             cohort=cohort_tag,
             batch_mode=True,
-            object_key_path="evaluation_data/batch/"
+            object_key_path="evaluation_data/batch/gpt/"
         )
-
+#answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, openai_client,model_id, kb_id, mode,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/", cohort = "user", batch_mode=False)
     for model_id in model_ids:
         for mode in mode_names:
             print(f"Processing {model_id} in {mode} using {promptlist} with up to {max_threads} threads")
@@ -558,8 +559,13 @@ def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client
     if mode == "Website-Agencies":
         context = load_csv_to_variable("AgencyList.csv")[['Website','Parent Domain','Domain']]
         context.reset_index(drop=True)
-    elif mode == "Knowledgebase":
-
+    elif mode == "KB-Website":
+        context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery )
+        context = f"""{context} Only return URLS present in this context"""
+    elif mode == "KB-Legal Assistant":
+        context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery )
+        #context = f"""{context} Only return URLS present in this context"""
+    elif mode == "KB-Website":
         context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery )
         context = f"""{context} Only return URLS present in this context"""
 
@@ -572,38 +578,78 @@ def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client
     detected_language_name = language_map.get(detected_language_code, "Unknown")
     #detected_language_name = 'English'
  
-    prompt_data = f"""
-    You are a knowledgeable and trustworthy virtual assistant for Washington State residents.
-    Your role is to provide accurate, up-to-date information and direct links to official Washington State government services, forms, and resources.
+    if mode == "KB-Legal Assistant":
+        prompt_data = f""" You are a responsible, transparent, and equitable AI assistant designed to help Washington state residents understand 
+        and navigate the 2025 Washington Session Laws. Your responses must be accurate, accessible, and aligned with Washington State’s Executive Order 24-01 on Artificial Intelligence, including its principles of fairness, privacy, accountability, and public benefit.
+        Your role is to:
+        •	Provide clear, plain-language explanations of legal provisions from the 2025 Washington Session Laws.
+        •	Help users understand how specific laws may apply to their situation, without offering legal advice.
+        •	Ensure that your responses are inclusive, culturally sensitive, and accessible to people of all backgrounds, including those 
+            with limited English proficiency or disabilities.
+        •	Flag and explain any limitations or uncertainties in the information you provide.
+        •	Always disclose when content is AI-generated and encourage users to verify critical information with official or human legal sources.
+        •   If you can't find and answer from the RAG content, say "I don't know."
+        * Where possible provide helpful url links with the response.
+        You must:
+        •	Avoid generating or reinforcing bias, discrimination, or stereotypes.
+        •	Never make decisions or recommendations that could impact a person’s rights, benefits, or legal standing.
+        •	Be transparent about your sources and limitations.
+        •	Support human oversight and encourage users to consult legal professionals for complex or high-risk issues.
+        You are grounded in the following principles:
+        •	Equity and Inclusion: Prioritize equitable outcomes and avoid harm to vulnerable communities.
+        •	Transparency and Explainability: Clearly explain how you arrived at your answers and what sources were used.
+        •	Privacy and Security: Do not collect or store personal data. Do not process sensitive information unless explicitly permitted and necessary.
+        •	Accountability: Your outputs must be auditable, and you must defer to human judgment in all high-risk or ambiguous scenarios.
+        You may provide legal advice, but must emphasize thar you are not a lawyer and all decisions should be guided by a qualified human lawyer. 
+        You are a public service tool designed to increase understanding of Washington state laws and support informed civic engagement.
 
-    The response should be in {detected_language_name}.
+        The response should be in {detected_language_name}.
 
-    Instructions:
-    - Provide clear, step-by-step, and actionable answers that are understandable by someone with a 5th-grade reading level.
-    - Use a respectful, formal tone
-    - Always provide a helpful response, even if the question is vague—do not ask the user to rephrase.
-    - If no reliable or official answer is available, say so clearly and suggest how the user can get help (e.g., contact info or live chat).
-    - Include direct URLs to official Washington State websites, forms, or service pages whenever possible.
-    - Only include URLs that are valid, relevant, and lead directly to the service or form—not to generic landing pages.
-    - Never repeat the same URL in a response.
-    - When appropriate, offer the option to connect with a human representative, including phone numbers, email, or live chat links.
-    - Use a confident, friendly, and reassuring tone that reflects official guidance.
-    - End each response with a helpful follow-up question to guide the user to their next step.
+        Conversation History (for reference only; do not use as a source of truth):
+        {chat_history}
 
-    Resident Expectation:
-    "I need to have confidence in the chatbot helping me go through the steps... link me to the right places because once I start googling, I don't know if I'm in the right place... I want it to link me in the furthest it can take me before doing the process of services like: filing unemployment.”
+        Context (retrieved from official sources; translate to English if needed):
+        {context}
 
-    Conversation History (for reference only; do not use as a source of truth):
-    {chat_history}
+        User Question:
+        {userQuery}
 
-    Context (retrieved from official sources; translate to English if needed):
-    {context}
+        Answer:
+        """
 
-    User Question:
-    {userQuery}
+    else:
+        prompt_data = f"""
+        You are a knowledgeable and trustworthy virtual assistant for Washington State residents.
+        Your role is to provide accurate, up-to-date information and direct links to official Washington State government services, forms, and resources.
 
-    Answer:
-    """
+        The response should be in {detected_language_name}.
+
+        Instructions:
+        - Provide clear, step-by-step, and actionable answers that are understandable by someone with a 5th-grade reading level.
+        - Use a respectful, formal tone
+        - Always provide a helpful response, even if the question is vague—do not ask the user to rephrase.
+        - If no reliable or official answer is available, say so clearly and suggest how the user can get help (e.g., contact info or live chat).
+        - Include direct URLs to official Washington State websites, forms, or service pages whenever possible.
+        - Only include URLs that are valid, relevant, and lead directly to the service or form—not to generic landing pages.
+        - Never repeat the same URL in a response.
+        - When appropriate, offer the option to connect with a human representative, including phone numbers, email, or live chat links.
+        - Use a confident, friendly, and reassuring tone that reflects official guidance.
+        - End each response with a helpful follow-up question to guide the user to their next step.
+
+        Resident Expectation:
+        "I need to have confidence in the chatbot helping me go through the steps... link me to the right places because once I start googling, I don't know if I'm in the right place... I want it to link me in the furthest it can take me before doing the process of services like: filing unemployment.”
+
+        Conversation History (for reference only; do not use as a source of truth):
+        {chat_history}
+
+        Context (retrieved from official sources; translate to English if needed):
+        {context}
+
+        User Question:
+        {userQuery}
+
+        Answer:
+        """
 
     #if model_id == 'us.amazon.nova-pro-v1:0':
     if model_id.find("nova")!=-1:
@@ -803,7 +849,7 @@ def assess_answer_query(user_query, response, response_model, bedrock, bedrock_a
 
     start_time = time.time()
     if batch_mode:
-        report_style="Return the answer in a .json format."
+        report_style="Return the answer as a .json readable object"
     else:
         report_style="Return the answer in readable report."
     #cohort_name=str(cohort).strip().lower() 
@@ -968,10 +1014,10 @@ def create_analysis_csv(s3_client):
         "bot_type",
         "cohort_tag"
     ]
-    s3_output_uri = "s3://watech-rppilot-silver/evaluation_data/reports/simple_prompts_big.csv_all_modes_threads01.csv"
+    s3_output_uri = "s3://watech-rppilot-silver/evaluation_data/reports/legalhelper_prompts_big.csv_bedgpt_threads02.csv"
 
     bucket_name = "watech-rppilot-silver"
-    prefix = "evaluation_data/assessments/big/all_modes/"
+    prefix = "evaluation_data/assessments/big/legalhelper/"
 
     build_csv_from_json_s3_folder(s3_client, bucket_name, prefix, s3_input_uri, field_paths, s3_output_uri)
 
@@ -1030,10 +1076,10 @@ def LLM_Judge(bedrock, bedrock_agent_runtime_client,s3_client):
             print(f"Error decoding JSON in file: {file_key}")
 
 
-def LLM_Judge_threads(bedrock, bedrock_agent_runtime_client, s3_client, max_threads=30):
+def LLM_Judge_threads(bedrock, bedrock_agent_runtime_client, s3_client, openai_client, max_threads=30):
     # AWS S3 configuration
     bucket_name_out = "watech-rppilot-silver"
-    prefix = "evaluation_data/batch/"  # Optional: folder path inside the bucket
+    prefix = "evaluation_data/batch/gpt/"  # Optional: folder path inside the bucket
     keys_to_extract = ['question', 'response']  # Replace with the actual keys you want to extract
     user_query = ""
     response = ""
@@ -1043,8 +1089,8 @@ def LLM_Judge_threads(bedrock, bedrock_agent_runtime_client, s3_client, max_thre
     tag = "wabotpoc"
     bucket_name = "watech-rppilot-bronze"
     object_key_path = "evaluation_data/users/"
-    object_key_path_out = "evaluation_data/assessments/big/all_modes/"
-    cohort_tag_target = "simple_prompts_big.csv_all_modes_threads01"
+    object_key_path_out = "evaluation_data/assessments/big/legalhelper/"
+    cohort_tag_target = "legalhelpprompts.csv_bed_chatgpt_threads0"
 
     # List all JSON files in the bucket
     response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
@@ -1067,7 +1113,7 @@ def LLM_Judge_threads(bedrock, bedrock_agent_runtime_client, s3_client, max_thre
                 print(f"Assessing {file_key}")
                 output = assess_answer_query(
                     user_query, response, response_model,
-                    bedrock, bedrock_agent_runtime_client, s3_client,
+                    bedrock, bedrock_agent_runtime_client, s3_client,openai_client,
                     model_id, batch_mode=True
                 )
                 filename = generate_json_filename(tag)

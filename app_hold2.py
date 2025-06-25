@@ -79,29 +79,30 @@ def initialize_openai_clients():
 
 
 def main():
+    
+
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
         st.session_state.chat_handler = ChatHandler()
-        st.rerun()
         st.cache_data.clear()
         st.cache_resource.clear()
+        st.stop() # Stop execution to allow rerun with initialized state
+
+    # if 'initialized' not in st.session_state:
+    #     st.session_state.initialized = True
+    #     st.session_state.chat_handler = ChatHandler()
+    #     st.rerun()
+    #     st.cache_data.clear()
+    #     st.cache_resource.clear()
 
     load_dotStreat_sl()
     bedrock, bedrock_agent_runtime_client, s3_client = initialize_aws_clients()
     openai_client = initialize_openai_clients()
-    
-    #OLD
-    #LLM_Judge_threads(bedrock, bedrock_agent_runtime_client,s3_client)
-    #print(output)
-    #do_batch_prompts_threads(bedrock,bedrock_agent_runtime_client, s3_client, st.session_state.chat_handler, st.secrets["knowledge_base_legal_id"])
-    
-    #NEW
-    #create_analysis_csv(s3_client)
+    create_analysis_csv(s3_client)
     #LLM_Judge_threads(bedrock, bedrock_agent_runtime_client,s3_client,openai_client)
-   # print(output)
-    #do_batch_prompts_threads(bedrock,bedrock_agent_runtime_client, s3_client,openai_client, st.session_state.chat_handler, st.secrets["knowledge_base_legal_id"])
-
-
+    #print(output)
+    #do_batch_prompts_threads(bedrock,bedrock_agent_runtime_client, s3_client,openai_client, st.session_state.chat_handler, st.secrets["knowledge_base_hr_id"])
+    
     with st.sidebar:
         st.image("WashSymbol.jpg", width=300, use_container_width=True)
         st.title("Hello! I'm Wa-Bot - v0.9")
@@ -115,9 +116,8 @@ def main():
 
         enafocus = st.radio(
             "Wa-Bot mode",
-            ("KB-Website", "KB-Legal Assistant"),
-            #("Knowledgebase"),
-            #("Website", "Website-Agencies", "Knowledgebase"),
+            #("KB-Website", "KB-Legal Assistant"),
+            ("Website", "Website-Agencies", "Knowledgebase"),
             index=0,
             help="Select the ENA focus area"
         )
@@ -200,7 +200,7 @@ def main():
         #chat_input_prompt = "Washington Resident Services - Knowledgebase"
         st.session_state["kb_id"] = st.secrets["knowledge_base_website_id"]
         st.session_state["mode"] = "KB-Website"
-    elif enafocus == "KB-Legal Assistant":
+    elif enafocus == "Knowledgebase":
         #chat_input_prompt = "Washington Resident Services - Knowledgebase"
         st.session_state["kb_id"] = st.secrets["knowledge_base_legal_id"]
         st.session_state["mode"] = "KB-Legal Assistant"
