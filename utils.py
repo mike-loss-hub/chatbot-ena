@@ -1,15 +1,15 @@
 import boto3
 import json
 import os
-from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
+
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langdetect import detect
 import time
-import requests
+
 from requests_aws4auth import AWS4Auth
 import csv
 import pandas as pd
-from urllib.parse import urlparse
+
 import json
 import re
 
@@ -262,134 +262,9 @@ def do_batch_assess():
     reponse_files=[]
     s3_uri="s3://watech-rppilot-bronze/evaluation_data/batch/"
     reponse_files = list_json_files_in_s3_folder(s3_uri)
-    #output = assess_answer_query(user_query, ai_response, response_model, bedrock, bedrock_agent_runtime_client,s3_client, model_id)
     for response_file in reponse_files:
         print(response_file)
-
-def do_batch_prompts(bedrock,bedrock_agent_runtime_client, s3_client, chat_handler, kb_id):
-    
-    report_mode=True
-    promptlist="simple_prompts_small.csv"
-    #s3_uri = f"""s3://watech-rppilot-bronze/evaluation_data/prompt_lists/{promptlist}"""
-    s3_uri=f"""s3://watech-rppilot-bronze/evaluation_data/prompt_lists/{promptlist}"""
-    cohort_tag=f"""{promptlist}_fullloop05"""
-    
-    if s3_uri.startswith("s3://"):
-        try:
-            parsed = urlparse(s3_uri)
-            bucket = parsed.netloc
-            key = parsed.path.lstrip("/")
-
-            s3 = boto3.client("s3")
-            response = s3.get_object(Bucket=bucket, Key=key)
-            raw_bytes = response["Body"].read()
-
-            try:
-                content = raw_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                content = raw_bytes.decode("ISO-8859-1")
-            
-            data_list = [item.strip() for item in content.splitlines() if item.strip()]
-
-        except Exception as e:
-            print(f"Error reading file: {e}")
-    else:
-        print("Please enter a valid S3 URI starting with s3://")
-
-    model_ids = ["us.amazon.nova-pro-v1:0", "us.amazon.nova-micro-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0"]
-    #model_ids = ["Agent"]
-    #mode_names = ["Website", "Website-Agencies", "Knowledgebase"]
-    mode_names = ["Knowledgebase"]
-
-    for model_id in model_ids:
-        
-        for mode in mode_names:
-            object_key_path=f"""evaluation_data/batch/"""
-            progress=f"""processing {model_id} in {mode} using {promptlist}"""
-            print(progress)
-            total = len(data_list)
-            for i, item in enumerate(data_list):  
-                batch_prompt = item.strip()
-                #print(f"""Batching {batch_prompt}...""")
-                #def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, model_id, kb_id, mode,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/"
-                response = answer_query(
-                    item.strip(), 
-                    chat_handler,
-                    bedrock,
-                    bedrock_agent_runtime_client,
-                    s3_client,
-                    model_id,
-                    kb_id,
-                    mode,
-                    report_mode,
-                    cohort=cohort_tag,
-                    batch_mode=True,
-                    object_key_path=object_key_path)
-
-
-
-
-
-def do_batch_prompts_threads(bedrock, bedrock_agent_runtime_client, s3_client, openai_client,chat_handler, kb_id, max_threads=30):
-    report_mode = True
-    promptlist = "legalhelpprompts.csv"
-    s3_uri = f"s3://watech-rppilot-bronze/evaluation_data/prompt_lists/{promptlist}"
-    cohort_tag = f"{promptlist}_bed_chatgpt_threads0"
-
-    if s3_uri.startswith("s3://"):
-        try:
-            parsed = urlparse(s3_uri)
-            bucket = parsed.netloc
-            key = parsed.path.lstrip("/")
-
-            s3 = boto3.client("s3")
-            response = s3.get_object(Bucket=bucket, Key=key)
-            raw_bytes = response["Body"].read()
-
-            try:
-                content = raw_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                content = raw_bytes.decode("ISO-8859-1")
-
-            data_list = [item.strip() for item in content.splitlines() if item.strip()]
-
-        except Exception as e:
-            print(f"Error reading file: {e}")
-            return
-    else:
-        print("Please enter a valid S3 URI starting with s3://")
-        return
-
-    model_ids = ["us.amazon.nova-pro-v1:0", "us.amazon.nova-micro-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0", "us.anthropic.claude-3-5-sonnet-20241022-v2:0","gpt-4-turbo","gpt-4o"]
-    #model_ids = ["Agent"]
-    #mode_names = ["Website", "Website-Agencies", "Knowledgebase"]
-    mode_names = ["KB-Legal Assistant"]
-
-    def process_item(item, model_id, mode):
-        return answer_query(
-            item.strip(),
-            chat_handler,
-            bedrock,
-            bedrock_agent_runtime_client,
-            s3_client,
-            openai_client,
-            model_id,
-            kb_id,
-            mode,
-            report_mode,
-            cohort=cohort_tag,
-            batch_mode=True,
-            object_key_path="evaluation_data/batch/gpt/"
-        )
-#answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, openai_client,model_id, kb_id, mode,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/", cohort = "user", batch_mode=False)
-    for model_id in model_ids:
-        for mode in mode_names:
-            print(f"Processing {model_id} in {mode} using {promptlist} with up to {max_threads} threads")
-            with ThreadPoolExecutor(max_workers=max_threads) as executor:
-                executor.map(lambda item: process_item(item, model_id, mode), data_list)
-
-
-   
+  
 def send_prompt_to_agent(client, agent_id,agent_alias_id, prompt):
 
     # Initialize the Bedrock Agent Runtime client with a specific region
@@ -994,32 +869,6 @@ def build_csv_from_json_s3_folder(s3_client, bucket_name: str, prefix: str, s3_i
 
     print(f"CSV file has been uploaded to s3://{output_bucket}/{output_key}")
 
-def create_analysis_csv(s3_client):
-    s3_input_uri = "s3://your-input-bucket/your-folder/"
-    field_paths = [
-        "response.scores.helpfulness",
-        "response.scores.accuracy",
-        "response.scores.clarity",
-        "response.scores.tone",
-        "response.scores.conciseness",
-        "response.urls.totalURLs",
-        "response.urls.validURLs",
-        "response.urls.list",
-        "response.assessment",
-        "assessed_response",
-        "response_model",
-        "response_mode",
-        "assess_model",
-        "runttime",
-        "bot_type",
-        "cohort_tag"
-    ]
-    s3_output_uri = "s3://watech-rppilot-silver/evaluation_data/reports/legalhelper_prompts_big.csv_bedgpt_threads02.csv"
-
-    bucket_name = "watech-rppilot-silver"
-    prefix = "evaluation_data/assessments/big/legalhelper/"
-
-    build_csv_from_json_s3_folder(s3_client, bucket_name, prefix, s3_input_uri, field_paths, s3_output_uri)
 
 
 
@@ -1076,65 +925,6 @@ def LLM_Judge(bedrock, bedrock_agent_runtime_client,s3_client):
             print(f"Error decoding JSON in file: {file_key}")
 
 
-def LLM_Judge_threads(bedrock, bedrock_agent_runtime_client, s3_client, openai_client, max_threads=30):
-    # AWS S3 configuration
-    bucket_name_out = "watech-rppilot-silver"
-    prefix = "evaluation_data/batch/gpt/"  # Optional: folder path inside the bucket
-    keys_to_extract = ['question', 'response']  # Replace with the actual keys you want to extract
-    user_query = ""
-    response = ""
-    model_id = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-    object_key_path = ""
-    mode = "assess"
-    tag = "wabotpoc"
-    bucket_name = "watech-rppilot-bronze"
-    object_key_path = "evaluation_data/users/"
-    object_key_path_out = "evaluation_data/assessments/big/legalhelper/"
-    cohort_tag_target = "legalhelpprompts.csv_bed_chatgpt_threads0"
-
-    # List all JSON files in the bucket
-    response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-    json_files = [obj['Key'] for obj in response.get('Contents', []) if obj['Key'].endswith('.json')]
-
-    def process_file(file_key):
-        obj = s3_client.get_object(Bucket=bucket_name, Key=file_key)
-        content = obj['Body'].read().decode('utf-8')
-        try:
-            data = json.loads(content)
-            user_query = data.get('question', None)
-            response = data.get('response', None)
-            response_model = data.get('model', None)
-            response_mode = data.get('bot_type',None)
-            cohort_tag = data.get('cohort_tag', None)
-            run_time = data.get('timetorun', None)
-            cohort_tag_assess = f"{cohort_tag_target}_assess"
-
-            if cohort_tag_target == cohort_tag:
-                print(f"Assessing {file_key}")
-                output = assess_answer_query(
-                    user_query, response, response_model,
-                    bedrock, bedrock_agent_runtime_client, s3_client,openai_client,
-                    model_id, batch_mode=True
-                )
-                filename = generate_json_filename(tag)
-                object_key = f"{object_key_path_out}{cohort_tag}_{filename}"
-                content = build_json_string(
-                    response=output,
-                    assessed_response=response,
-                    response_model=response_model,
-                    response_mode=response_mode,
-                    assess_model=model_id,
-                    runttime=run_time,
-                    bot_type=mode,
-                    cohort_tag=cohort_tag_assess
-                )
-                s3_client.put_object(Bucket=bucket_name_out, Key=object_key, Body=content)
-        except json.JSONDecodeError:
-            print(f"Error decoding JSON in file: {file_key}")
-
-    # Use ThreadPoolExecutor to process files concurrently
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        executor.map(process_file, json_files)
 
     
     
