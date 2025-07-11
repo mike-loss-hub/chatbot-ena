@@ -559,6 +559,218 @@ def answer_query(user_input, chat_handler, bedrock, bedrock_agent_runtime_client
         
     return output_text
 
+
+
+
+
+def answer_query_talkie(user_input, chat_handler, bedrock, bedrock_agent_runtime_client,s3_client, openai_client,model_id, kb_id, mode,report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",object_key_path="evaluation_data/users/", cohort = "user", batch_mode=False):
+
+    start_time = time.time()
+    cohort_name=str(cohort).strip().lower() 
+    language_map = {
+        "en": "English", "pl": "Polish", "es": "Spanish",
+        # ... (rest of language map)
+    }
+    
+    userQuery = user_input
+
+    context="NONE"
+    # if mode == "Website-Agencies":
+    #     context = load_csv_to_variable("AgencyList.csv")[['Website','Parent Domain','Domain']]
+    #     context.reset_index(drop=True)
+    # elif mode == "KB-Website":
+    #     context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery )
+    #     context = f"""{context} Only return URLS present in this context"""
+    # elif mode == "KB-Legal Assistant":
+    #     context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery )
+    #     #context = f"""{context} Only return URLS present in this context"""
+    # elif mode == "KB-Website":
+    #     context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery )
+    #     context = f"""{context} Only return URLS present in this context"""
+
+    # with open('techbot.json', 'r') as file:
+    #     context = json.load(file) #FHJ89HX6SK
+    context = get_context(bedrock_agent_runtime_client, model_id, kb_id, userQuery )
+
+
+    if batch_mode:
+        chat_history = "NONE" #chat_handler.get_conversation_string()
+    else:
+        chat_history= chat_handler.get_conversation_string()
+    
+    detected_language_code = detect(userQuery)    
+    detected_language_name = language_map.get(detected_language_code, "Unknown")
+    #detected_language_name = 'English'
+ 
+    if mode == "KB-Legal Assistant":
+        prompt_data = f""" You are a responsible, transparent, and equitable AI assistant designed to help Washington state residents understand 
+        and navigate the 2025 Washington Session Laws. Your responses must be accurate, accessible, and aligned with Washington State’s Executive Order 24-01 on Artificial Intelligence, including its principles of fairness, privacy, accountability, and public benefit.
+        Your role is to:
+        •	Provide clear, plain-language explanations of legal provisions from the 2025 Washington Session Laws.
+        •	Help users understand how specific laws may apply to their situation, without offering legal advice.
+        •	Ensure that your responses are inclusive, culturally sensitive, and accessible to people of all backgrounds, including those 
+            with limited English proficiency or disabilities.
+        •	Flag and explain any limitations or uncertainties in the information you provide.
+        •	Always disclose when content is AI-generated and encourage users to verify critical information with official or human legal sources.
+        •   If you can't find and answer from the RAG content, say "I don't know."
+        * Where possible provide helpful url links with the response.
+        You must:
+        •	Avoid generating or reinforcing bias, discrimination, or stereotypes.
+        •	Never make decisions or recommendations that could impact a person’s rights, benefits, or legal standing.
+        •	Be transparent about your sources and limitations.
+        •	Support human oversight and encourage users to consult legal professionals for complex or high-risk issues.
+        You are grounded in the following principles:
+        •	Equity and Inclusion: Prioritize equitable outcomes and avoid harm to vulnerable communities.
+        •	Transparency and Explainability: Clearly explain how you arrived at your answers and what sources were used.
+        •	Privacy and Security: Do not collect or store personal data. Do not process sensitive information unless explicitly permitted and necessary.
+        •	Accountability: Your outputs must be auditable, and you must defer to human judgment in all high-risk or ambiguous scenarios.
+        You may provide legal advice, but must emphasize thar you are not a lawyer and all decisions should be guided by a qualified human lawyer. 
+        You are a public service tool designed to increase understanding of Washington state laws and support informed civic engagement.
+
+        The response should be in {detected_language_name}.
+
+        Conversation History (for reference only; do not use as a source of truth):
+        {chat_history}
+
+        Context (retrieved from official sources; translate to English if needed):
+        {context}
+
+        User Question:
+        {userQuery}
+
+        Answer:
+        """
+
+    else:
+        prompt_data = f"""
+        You are a helpful assistant for Washington State residents. Your job is to help users find and understand government services using the data provided in the `context` AND actively retrieving and incorporating information from the URLs referenced in the context.
+
+        The `context` contains structured information about services from Washington State government agencies. Each service includes fields such as:
+        - Link Title
+        - Service Summary
+        - Link URL
+        - Category
+        - Sub Category
+        - Agency
+        - Audience
+        - Action
+        - Life event
+        - Time to accomplish
+        - Authenticated/Unauthenticated
+        - Eligibility requirements
+
+        Instructions:
+        1. When a user asks a question, identify their intent (e.g., apply, renew, report, find, get help).
+        2. Search the `context` for services that match the user's intent, keywords, or categories.
+        3. For EACH relevant service found:
+            a. Access and analyze the webpage at the provided Link URL
+            b. Extract relevant information such as:
+                - Detailed service descriptions
+                - Step-by-step procedures
+                - Required documents and forms
+                - Fees and payment methods
+                - Processing times
+                - Contact information
+                - Office locations and hours
+                - Eligibility criteria
+                - FAQs and common issues
+            c. Combine this web-sourced information with the context data
+            d. Verify the information is current and consistent
+        4. Return up to 3 relevant services with:
+            - Title and summary from context
+            - Direct link
+            - Relevant tags
+            - Comprehensive details from both context AND webpage analysis
+        5. If webpage access fails, note this in the response and rely on context data only
+        6. If no match is found, politely say so and suggest they try rephrasing.
+
+        Language:
+        - Always respond in the same language the user is using. If the user speaks Spanish, respond in Spanish. If the user speaks English, respond in English. Match the tone and formality of the user's language.
+
+        Rules:
+        - Actively retrieve and analyze information from official URLs in the context
+        - Verify information currency and note any discrepancies
+        - Integrate web-sourced details with context data
+        - Cite specific sources for key information
+        - Maintain accuracy while synthesizing multiple information sources
+        - Do not use any outside knowledge unless it comes from the `context` or from the official URLs listed in the `context`
+        - Be friendly, clear, and concise in your responses
+        - Always respond as if you are speaking to a resident of Washington State
+        - Do not speculate or invent information.
+        - Verify information currency and note any discrepancies.
+
+        At the end of your response, include a short, plain-language summary labeled **"XXYZ:"** that only refers to the text returned for the answer to the question but helps the resident understand what to do next or what the key takeaway is.
+
+        Example format:
+        ---
+        **Apply for unemployment benefits**  
+        You can apply for unemployment benefits and submit weekly claims.  
+        🔗 https://secure.esd.wa.gov/home/  
+        🏷️ Category: Work | Audience: Individuals | Agency: Department of Employment Security
+
+        Details from context and webpage analysis:
+        - Application methods: Online portal, phone application available
+        - Required documents: 
+        * Social Security card
+        * Driver's license or state ID
+        * Employment history (18 months)
+        * Bank information for direct deposit
+        - Current processing time: 1-3 business days
+        - Support options:
+        * Phone: 800-318-6022 (Mon-Fri, 8am-4pm)
+        * Online chat available
+        - Weekly claim requirements
+        - Current benefit calculator tool available
+
+        **XXYZ:** Apply online with required documents ready. Expect 1-3 days processing. Call 800-318-6022 for help.
+        ---
+
+        Conversation History (for reference only; do not use as a source of truth):
+        {chat_history}
+
+        Context:
+        {context}
+
+        User Question:
+        {userQuery}
+
+        Answer:
+        """
+
+    #if model_id == 'us.amazon.nova-pro-v1:0':
+    if model_id.find("nova")!=-1:
+        output_text = get_response(bedrock, model_id, prompt_data)
+    elif model_id.find("claude")!=-1:
+        output_text = get_response_claude(bedrock, model_id, prompt_data)
+    elif model_id.find("gpt")!=-1:
+        output_text = get_response_openai(openai_client, model_id, prompt_data)
+    else:
+        #output_text = get_response_agent(bedrock_agent_runtime_client, model_id, prompt_data)
+        #send_prompt_to_agent(prompt, agent_id, agent_alias_id, bedrock_agent, region_name='us-west-2')
+        agent_id = "WYNNZUBAH3"
+        agent_alias_id = "JIFVQV4MZK"
+        #send_prompt_to_agent(client, agent_id,agent_alias_id, prompt):
+        output_text= send_prompt_to_agent(bedrock_agent_runtime_client,agent_id, agent_alias_id, userQuery)
+    if not batch_mode:
+        chat_handler.add_message("human", userQuery)
+        chat_handler.add_message("ai", output_text)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    runTime = f"Elapsed time: {elapsed_time:.4f} seconds"
+    #output_text = f"{output_text}\n\nModel used: {model_id}\n\nbot type: {mode}\n\nTime to run: {runTime}\n\n"
+    
+    if report_mode:
+        filename = generate_json_filename(tag)
+        #object_key=f"{object_key_path}{filename}_{cohort_name}"
+        object_key=f"{object_key_path}{cohort_name}_{filename}"
+        #content= build_json_string(question = userQuery, prompt=prompt_data, response=output_text, timetorun=runTime, model=model_id, bot_type = mode, cohort_tag=cohort_name)
+        content= build_json_string(question = userQuery, response=output_text, timetorun=runTime, model=model_id, bot_type = mode, cohort_tag=cohort_name)
+        s3_client.put_object(Bucket=bucket_name, Key=object_key, Body=content)
+        
+    return output_text
+
+
 def answer_query_txt(user_input, chat_handler, bedrock, bedrock_agent_runtime_client, s3_client, model_id, kb_id, mode,
                  report_mode=False, tag="wabotpoc", bucket_name="watech-rppilot-bronze",
                  object_key_path="evaluation_data/users/", cohort="user", batch_mode=False):
